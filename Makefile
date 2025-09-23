@@ -20,7 +20,8 @@ export IDF_GITHUB_ASSETS
 # General targets
 
 .PHONY: all
-all: build flash
+#all: build flash
+all: build
 
 .PHONY: install
 install: flash
