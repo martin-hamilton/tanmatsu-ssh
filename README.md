@@ -29,7 +29,7 @@ OK, that's enough doom and gloom. On with the show...
 
 ### TODO
 
-- [ ] Fix it so that insert works when you
+- [ ] Fix it so that insert works when you use the left arrow to go backwards
 - [ ] Figure out why a connection added via `badgelink` isn't visible in the connection list
 - [ ] Improve ANSI escape character handling so we can run vi, emacs etc
 - [ ] More checks and balances - right now it's still a bit too easy to crash
