@@ -265,11 +265,11 @@ bool menu_ssh_edit(pax_buf_t* buffer, gui_theme_t* theme, uint8_t index, bool ne
     ssh_settings_t settings = {0};
     if (new_entry) {
 	ESP_LOGI(TAG, "making new ssh connection");
-	memcpy(settings.connection_name, "Conn", 4);
-	memcpy(settings.dest_host, "Host", 4);
-	memcpy(settings.dest_port, "Port", 4);
-	memcpy(settings.username, "User", 4);
-	memcpy(settings.password, "Pass", 4);
+	//memcpy(settings.connection_name, "Conn", 4);
+	//memcpy(settings.dest_host, "Host", 4);
+	//memcpy(settings.dest_port, "Port", 4);
+	//memcpy(settings.username, "User", 4);
+	//memcpy(settings.password, "Pass", 4);
     } else {
 	ESP_LOGI(TAG, "fetching ssh connection info");
         esp_err_t res = ssh_settings_get(index, &settings);

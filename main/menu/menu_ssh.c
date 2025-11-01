@@ -201,6 +201,7 @@ static bool _menu_ssh(pax_buf_t* buffer, gui_theme_t* theme) {
                                     uint8_t index = (uint32_t)menu_get_callback_args(&menu, menu_get_position(&menu));
 				    ssh_settings_get(index, &settings);
 				    util_ssh(buffer, theme, &settings);
+                                    render(buffer, theme, &menu, position, false, false, false, false);
                                 }
                                 break;
                             }
