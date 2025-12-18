@@ -2,7 +2,6 @@
 #include <sys/time.h>
 #include <time.h>
 #include "appfs.h"
-#include "badgelink.h"
 #include "bsp/device.h"
 #include "bsp/display.h"
 #include "bsp/i2c.h"
@@ -13,10 +12,11 @@
 #include "chakrapetchmedium.h"
 #include "common/display.h"
 #include "common/theme.h"
-#include "coprocessor_management.h"
 #include "custom_certificates.h"
+#include "device_settings.h"
 #include "driver/gpio.h"
 #include "esp_err.h"
+#include "esp_heap_caps.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_types.h"
 #include "esp_log.h"
@@ -27,20 +27,18 @@
 #include "gui_style.h"
 #include "hal/lcd_types.h"
 #include "icons.h"
-#include "menu/home.h"
 #include "ntp.h"
 #include "nvs_flash.h"
 #include "pax_fonts.h"
 #include "pax_gfx.h"
 #include "pax_text.h"
 #include "portmacro.h"
-#include "python.h"
 #include "sdcard.h"
 #include "sdkconfig.h"
 #include "timezone.h"
-#include "usb_device.h"
 #include "wifi_connection.h"
 #include "wifi_remote.h"
+#include "menu_ssh.h"
 
 #if defined(CONFIG_BSP_TARGET_TANMATSU) || defined(CONFIG_BSP_TARGET_KONSOOL) || \
     defined(CONFIG_BSP_TARGET_HACKERHOTEL_2026)
@@ -49,7 +47,7 @@
 #endif
 
 // Constants
-static char const TAG[] = "main";
+static char const TAG[] = "tanmatsu-ssh";
 
 // Global variables
 static QueueHandle_t input_event_queue      = NULL;
@@ -111,7 +109,7 @@ static void wifi_task(void* pvParameters) {
     }
     wifi_stack_task_done = true;
 
-    if (ntp_get_enabled()) {
+    if (ntp_get_enabled() && wifi_stack_initialized) {
         if (wifi_connect_try_all() == ESP_OK) {
             esp_err_t res = ntp_start_service("pool.ntp.org");
             if (res == ESP_OK) {
@@ -131,85 +129,20 @@ static void wifi_task(void* pvParameters) {
         }
     }
 
+    while (1) {
+        printf("free:%lu min-free:%lu lfb-dma:%u lfb-def:%u lfb-8bit:%u\n", esp_get_free_heap_size(),
+               esp_get_minimum_free_heap_size(), heap_caps_get_largest_free_block(MALLOC_CAP_DMA),
+               heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT), heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+
     vTaskDelete(NULL);
 }
 
-esp_err_t check_i2c_bus(void) {
-    i2c_master_bus_handle_t i2c_bus_handle_internal;
-    ESP_ERROR_CHECK(bsp_i2c_primary_bus_get_handle(&i2c_bus_handle_internal));
-#if defined(CONFIG_BSP_TARGET_TANMATSU) || defined(CONFIG_BSP_TARGET_KONSOOL) || \
-    defined(CONFIG_BSP_TARGET_HACKERHOTEL_2026)
-    esp_err_t ret_codec  = i2c_master_probe(i2c_bus_handle_internal, 0x08, 50);
-    esp_err_t ret_bmi270 = i2c_master_probe(i2c_bus_handle_internal, 0x68, 50);
-
-    if (ret_codec) {
-        ESP_LOGE(TAG, "Audio codec not found on I2C bus");
-    }
-
-    if (ret_bmi270) {
-        ESP_LOGE(TAG, "BMI270 not found on I2C bus");
-    }
-
-    if (ret_codec != ESP_OK && ret_bmi270 != ESP_OK) {
-        // Neither the audio codec nor the BMI270 sensor were found on the I2C bus.
-        // This probably means something is wrong with the I2C bus, we check if the coprocessor is present
-        // to determine if the I2C bus is working at all
-        esp_err_t ret_coprocessor = i2c_master_probe(i2c_bus_handle_internal, 0x5F, 50);
-        if (ret_coprocessor != ESP_OK) {
-            ESP_LOGE(TAG, "Coprocessor not found on I2C bus");
-            pax_buf_t* buffer = display_get_buffer();
-            pax_background(buffer, 0xFFFF0000);
-            pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 0, "The internal I2C bus is not working!");
-            pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 1,
-                          "Please remove add-on board, modifications and other plugged in");
-            pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 2,
-                          "devices and wires and power cycle the device.");
-            display_blit_buffer(buffer);
-
-            vTaskDelay(pdMS_TO_TICKS(10000));
-
-            startup_screen("Initializing coprocessor...");
-            coprocessor_flash(true);
-            return ESP_FAIL;
-        } else {
-            pax_buf_t* buffer = display_get_buffer();
-            pax_background(buffer, 0xFFFF0000);
-            pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 0,
-                          "Audio codec and orientation sensor do not respond");
-            pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 1,
-                          "This could indicate a hardware issue.");
-            pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 2,
-                          "Please power cycle the device, if that does not");
-            pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 3, "help please contact support.");
-            display_blit_buffer(buffer);
-            vTaskDelay(pdMS_TO_TICKS(3000));
-        }
-    } else if (ret_codec != ESP_OK) {
-        pax_buf_t* buffer = display_get_buffer();
-        pax_background(buffer, 0xFFFF0000);
-        pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 0, "Audio codec does not respond");
-        pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 1, "This could indicate a hardware issue.");
-        pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 2,
-                      "Please power cycle the device, if that does not");
-        pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 3, "help please contact support.");
-        display_blit_buffer(buffer);
-        vTaskDelay(pdMS_TO_TICKS(3000));
-    } else if (ret_bmi270 != ESP_OK) {
-        pax_buf_t* buffer = display_get_buffer();
-        pax_background(buffer, 0xFFFF0000);
-        pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 0, "Orientation sensor does not respond");
-        pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 1, "This could indicate a hardware issue.");
-        pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 2,
-                      "Please power cycle the device, if that does not");
-        pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 18 * 3, "help please contact support.");
-        display_blit_buffer(buffer);
-        vTaskDelay(pdMS_TO_TICKS(3000));
-    }
-#endif
-    return ESP_OK;
-}
-
 void app_main(void) {
+    gui_theme_t* theme = get_theme();
+    pax_buf_t*   fb    = display_get_buffer();
+
     // Initialize the Non Volatile Storage service
     esp_err_t res = nvs_flash_init();
     if (res == ESP_ERR_NVS_NO_FREE_PAGES || res == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -219,24 +152,33 @@ void app_main(void) {
     ESP_ERROR_CHECK(res);
 
     // Initialize the Board Support Package
-    esp_err_t bsp_init_result = bsp_device_initialize();
+    const bsp_configuration_t bsp_configuration = {
+        .display =
+            {
+                .requested_color_format = LCD_COLOR_PIXEL_FORMAT_RGB565,
+                .num_fbs                = 1,
+            },
+    };
+    esp_err_t bsp_init_result = bsp_device_initialize(&bsp_configuration);
 
     if (bsp_init_result == ESP_OK) {
         ESP_ERROR_CHECK(bsp_input_get_queue(&input_event_queue));
         bsp_display_set_backlight_brightness(100);
         display_init();
-    } else if (bsp_device_get_initialized_without_coprocessor()) {
-        display_init();
-        pax_buf_t* buffer = display_get_buffer();
-        pax_background(buffer, 0xFFFFFF00);
-        pax_draw_text(buffer, 0xFF000000, pax_font_sky_mono, 16, 0, 0, "Device started without coprocessor!");
-        display_blit_buffer(buffer);
-        vTaskDelay(pdMS_TO_TICKS(2000));
     } else {
         ESP_LOGE(TAG, "Failed to initialize BSP, bailing out.");
         return;
     }
 
+    // Apply settings
+    startup_screen("Applying settings...");
+    device_settings_apply();
+
+    // Configure LEDs
+    bsp_led_clear();
+    bsp_led_set_mode(true);
+
+    // Initialize filesystems
     startup_screen("Mounting FAT filesystem...");
 
     esp_vfs_fat_mount_config_t fat_mount_config = {
@@ -254,22 +196,6 @@ void app_main(void) {
         pax_buf_t* buffer = display_get_buffer();
         pax_background(buffer, 0xFFFF0000);
         pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 0, "Failed to initialize FAT filesystem");
-        display_blit_buffer(buffer);
-        return;
-    }
-
-    startup_screen("Checking I2C bus...");
-    if (check_i2c_bus() != ESP_OK) {
-        return;
-    }
-
-    startup_screen("Initializing coprocessor...");
-    coprocessor_flash(false);
-
-    if (bsp_init_result != ESP_OK || bsp_device_get_initialized_without_coprocessor()) {
-        pax_buf_t* buffer = display_get_buffer();
-        pax_background(buffer, 0xFFFF0000);
-        pax_draw_text(buffer, 0xFFFFFFFF, pax_font_sky_mono, 16, 0, 0, "Failed to initialize coprocessor");
         display_blit_buffer(buffer);
         return;
     }
@@ -319,22 +245,11 @@ void app_main(void) {
 
     ESP_ERROR_CHECK(initialize_custom_ca_store());
 
-#if CONFIG_IDF_TARGET_ESP32P4
-// Only integrate Python into the launcher on ESP32-P4 targets
-#if 0
-    python_initialize();
-#endif
-#endif
-
-    xTaskCreatePinnedToCore(wifi_task, TAG, 4096, NULL, 10, NULL, 1);
-
-    badgelink_init();
-    usb_initialize();
-    badgelink_start(usb_send_data);
+    xTaskCreatePinnedToCore(wifi_task, TAG, 4096, NULL, 10, NULL, CONFIG_SOC_CPU_CORES_NUM - 1);
 
     load_icons();
 
-    bsp_power_set_usb_host_boost_enabled(true);
+    //bsp_power_set_usb_host_boost_enabled(true); -- might want to keep this?
 
-    menu_home();
+    menu_ssh(fb, theme);
 }

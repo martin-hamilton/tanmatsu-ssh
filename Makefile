@@ -2,8 +2,8 @@ PORT ?= /dev/ttyACM0
 
 IDF_PATH ?= $(shell cat .IDF_PATH 2>/dev/null || echo `pwd`/esp-idf)
 IDF_TOOLS_PATH ?= $(shell cat .IDF_TOOLS_PATH 2>/dev/null || echo `pwd`/esp-idf-tools)
-IDF_BRANCH ?= master
-IDF_COMMIT ?= aaebc374676621980878789c49d239232ea714c5
+IDF_BRANCH ?= v5.5.1
+#IDF_COMMIT ?= aaebc374676621980878789c49d239232ea714c5
 IDF_EXPORT_QUIET ?= 1
 IDF_GITHUB_ASSETS ?= dl.espressif.com/github_assets
 MAKEFLAGS += --silent
@@ -12,7 +12,6 @@ SHELL := /usr/bin/env bash
 
 DEVICE ?= tanmatsu # Default target device
 BUILD ?= build/$(DEVICE)
-FAT ?= 0 # Don't build and/or flash FAT partition by default
 
 export IDF_TOOLS_PATH
 export IDF_GITHUB_ASSETS
@@ -20,7 +19,6 @@ export IDF_GITHUB_ASSETS
 # General targets
 
 .PHONY: all
-#all: build flash
 all: build
 
 .PHONY: install
@@ -44,8 +42,8 @@ sdk:
 	if test -d "$(IDF_PATH)"; then echo -e "ESP-IDF target folder exists!\r\nPlease remove the folder or un-set the environment variable."; exit 1; fi
 	if test -d "$(IDF_TOOLS_PATH)"; then echo -e "ESP-IDF tools target folder exists!\r\nPlease remove the folder or un-set the environment variable."; exit 1; fi
 	git clone --recursive --branch "$(IDF_BRANCH)" https://github.com/espressif/esp-idf.git "$(IDF_PATH)" --depth=1 --shallow-submodules
-	cd "$(IDF_PATH)"; git fetch origin "$(IDF_COMMIT)" --recurse-submodules || true
-	cd "$(IDF_PATH)"; git checkout "$(IDF_COMMIT)"
+#	cd "$(IDF_PATH)"; git fetch origin "$(IDF_COMMIT)" --recurse-submodules || true
+#	cd "$(IDF_PATH)"; git checkout "$(IDF_COMMIT)"
 	cd "$(IDF_PATH)"; git submodule update --init --recursive
 	cd "$(IDF_PATH)"; bash install.sh all
 
@@ -94,8 +92,8 @@ checkbuildenv:
 # Building
 
 .PHONY: build
-build: icons checkbuildenv submodules
-	source "$(IDF_PATH)/export.sh" >/dev/null && idf.py -B $(BUILD) build -DDEVICE=$(DEVICE) -DFAT=$(FAT)
+build: checkbuildenv submodules
+	source "$(IDF_PATH)/export.sh" >/dev/null && idf.py -B $(BUILD) build -DDEVICE=$(DEVICE)
 
 # Hardware
 
@@ -108,21 +106,6 @@ flash: build
 flashmonitor: build
 	source "$(IDF_PATH)/export.sh" && \
 	idf.py -B $(BUILD) flash -p $(PORT) monitor
-
-.PHONY: prepappfs
-prepappfs:
-	source "$(IDF_PATH)/export.sh" && \
-	python3 managed_components/badgeteam__appfs/tools/appfs_generate.py \
-	8192000 \
-	appfs.bin
-
-.PHONY: appfs
-appfs:
-	source "$(IDF_PATH)/export.sh" && \
-	esptool.py \
-		-b 921600 --port $(PORT) \
-		write_flash --flash_mode dio --flash_freq 80m --flash_size 16MB \
-		0x330000 appfs.bin
 
 .PHONY: erase
 erase:
@@ -162,48 +145,24 @@ size-components:
 size-files:
 	source "$(IDF_PATH)/export.sh" && idf.py -B $(BUILD) size-files
 
-.PHONY: efuse
-efuse:
-	$(IDF_PATH)/components/efuse/efuse_table_gen.py --idf_target esp32p4 $(IDF_PATH)/components/efuse/esp32p4/esp_efuse_table.csv main/esp_efuse_custom_table.csv
-
 # Formatting
 
 .PHONY: format
 format:
 	find main/ -iname '*.h' -o -iname '*.c' -o -iname '*.cpp' | xargs clang-format -i
 
-# Re-compile protobuf files
-# If you are an end user, you do not need to run this;
-# the output files are already there in the repository.
+# Badgelink
+.PHONY: badgelink
+badgelink:
+	rm -rf badgelink
+	git clone https://github.com/badgeteam/esp32-component-badgelink.git badgelink
+	cd badgelink/tools; ./install.sh
 
-.PHONY: compile-protobuf
-compile-protobuf:
-	protoc --pyi_out=tools --python_out=tools badgelink.proto
-	python3 main/badgelink/nanopb/generator/nanopb_generator.py -D main/badgelink -f badgelink.options badgelink.proto
+.PHONY: install
+install: build
+install:
+	cd badgelink/tools; ./badgelink.sh appfs upload tanmatsu-ssh "SSH" 1 ../../build/tanmatsu/tanmatsu-ssh.bin
 
-# Take all svg files from main/static/icons and put them in main/fat/icons as png using tools/connvert.sh
-ICONS_SRC := $(wildcard main/static/icons/*.svg)
-ICONS_DST := $(patsubst main/static/icons/%.svg,main/fat/icons/%.png,$(ICONS_SRC))
-
-.PHONY: icons
-icons: $(ICONS_DST)
-
-main/fat/icons/%.png: main/static/icons/%.svg
-	mkdir -p main/fat/icons
-	tools/convert.sh $< $@
-	
-# Build all targets
-.PHONY: buildall
-buildall:
-	$(MAKE) build DEVICE=tanmatsu
-	#$(MAKE) build DEVICE=konsool
-	#$(MAKE) build DEVICE=hackerhotel-2026
-	#$(MAKE) build DEVICE=esp32-p4-function-ev-board
-	#$(MAKE) build DEVICE=mch2022
-	#$(MAKE) build DEVICE=hackerhotel-2024
-
-# Flash all: assumes Tanmatsu P4 is /dev/ttyACM0, C6 is /dev/ttyACM1 and MCH2022 badge is /dev/ttyACM2
-.PHONY: flashall
-flashall:
-	$(MAKE) flash DEVICE=tanmatsu PORT=/dev/ttyACM0
-	#$(MAKE) flash DEVICE=mch2022 PORT=/dev/ttyACM2
+.PHONY: run
+run:
+	cd badgelink/tools; ./badgelink.sh start application

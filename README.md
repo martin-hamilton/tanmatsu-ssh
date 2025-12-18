@@ -1,17 +1,20 @@
-# Tanmatsu launcher - now with ssh!
+# Tanmatsu ssh client
 
 ## But what does that mean?
 
-This fork takes the [Tanmatsu launcher](https://github.com/Nicolai-Electronics/tanmatsu-launcher) and adds an integrated `ssh` client using the [ESP-IDF component wrapper for libssh2](https://components.espressif.com/components/skuodi/libssh2_esp/) and the [Badge.Team](https://badge.team) software stack. If you don't know what any of this means, don't worry, but this repo probably isn't for you. No vibe coding was involved, just good vibes :-)
+This is an `ssh` client for the Tanmatsu / Konsool device, using the [ESP-IDF component wrapper for libssh2](https://components.espressif.com/components/skuodi/libssh2_esp/) and the [Badge.Team](https://badge.team) software stack. If you don't know what any of this means, don't worry, but this repo probably isn't for you. It was originally a hacked version of the Tanmatsu launcher, but is now a standalone app in its own right.
 
-## What can I do with it?
+## It want it! How do I get it?
 
-When your Tanmatsu boots up you will see that there is a new home screen icon labelled SSH, and a new entry for SSH in the settings menu.
+Right now you have to build it from source code - see below for further info. When it has evolved a bit more it will be submitted to the Tanmatsu app repository.
 
-Selecting the SSH home screen icon will launch the SSH client. This has two parts:
+## How does it work?
 
-1. A menu and settings management component. This lets you add and manage details of the `ssh` servers you would like to connect to.
-2. The actual `ssh` client. This spawns a full screen terminal emulation and manages the `ssh` session.
+~~When your Tanmatsu boots up you will see that there is a new home screen icon labelled SSH, and a new entry for SSH in the settings menu.~~
+
+After installing the app, you should find that you have an extra entry in your Apps directory called `SSH`. When you launch it, you'll be prompted with a list of the `ssh` servers that the app knows about - initially this will be empty, but there is a GUI that should let you add server details.
+
+When you have at least one server configured, you can press `ENTER` to start an `ssh` connection to the selected server. This spawns a full screen terminal emulation and manages the `ssh` session.
 
 During the `ssh` session there are some useful things you can do with the Tanmatsu function keys:
 
@@ -83,15 +86,21 @@ OK, that's enough doom and gloom. On with the show...
 - [ ] Test with a variety of `ssh` implementations and versions - different encryption algorithms, key types etc
 - [ ] Test TUI apps with TERM xterm-color, xterm-256color etc, once fancy login session working
 - [ ] Check we are freeing memory etc on the Tanmatsu when no longer required
-- [ ] Check that I haven't inadvertently committed Licensing Crimes by mixing and matching code from different sources
+- [ ] Check that we haven't inadvertently committed Licensing Crimes by mixing and matching code from different sources
 
 ### Not Doing This
 
-This app is all about interactive remote login, but you can do other stuff with `ssh` like `scp` and `sftp` file transfer and batch mode remote command execution. This app isn't doing that stuff, at least for now. I think it would be better to have dedicated apps for these other functions. And some sort of shell / REPL for that matter...
+This app is all about interactive remote login, but you can do other stuff with `ssh` like `scp` and `sftp` file transfer and batch mode remote command execution. This app isn't doing that stuff, at least for now. It would probably be better to have dedicated apps for these other functions. And some sort of shell / REPL for that matter...
 
 ## Building
 
 You should be able to build it in the same way as the regular launcher, and it should pull in the `skuodi/libssh2_esp` component at build time. I've had good results using ESP-IDF 5.5 and Python 3.12.7 in case this is relevant.
+
+## Code contributions
+
+If you make any fixes or improvements, please do raise a PR. Let's make this a really great app togher!
+
+Also the vibe is very much "good vibes" more than vibe coding, so don't be too despondent if your epic 10,000 line LLM generated patch gets rejected ;-)
 
 ## Terminal icon
 
