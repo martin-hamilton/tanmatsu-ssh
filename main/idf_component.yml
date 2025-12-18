@@ -35,5 +35,4 @@ dependencies:
       - if: target == esp32p4
   nicolaielectronics/tanmatsu-wifi:
     version: ">=1.0.1"
-  badgeteam/terminal-emulator: ">=0.0.4"
   skuodi/libssh2_esp: ^1.0.0

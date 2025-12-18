@@ -46,6 +46,7 @@ idf_component_register(
 		freertos
 		tanmatsu-wifi
 		lwip
+		badgeteam__terminal-emulator
 		${extra_requires}
 	INCLUDE_DIRS
 		"."

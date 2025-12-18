@@ -1,0 +1,12 @@
+dependencies:
+  idf: '>=5.3'
+  robotman2412/pax-gfx: '>=1.1.2'
+description: Terminal emulator
+issues: https://github.com/badgeteam/esp32-component-terminal-emulator/issues
+license: MIT
+repository: git://github.com/badgeteam/esp32-component-terminal-emulator.git
+repository_info:
+  commit_sha: 82ae1e3893ef0beba9b18891ae365196eb3a7494
+  path: .
+url: https://github.com/badgeteam/esp32-component-terminal-emulator
+version: 0.0.4
