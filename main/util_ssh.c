@@ -549,7 +549,7 @@ void util_ssh(pax_buf_t* buffer, gui_theme_t* theme, ssh_settings_t* settings) {
                             case BSP_INPUT_NAVIGATION_KEY_ESC:
 				ESP_LOGI(TAG, "esc key pressed");
 				ssh_out = '\e';
-                                libssh2_channel_write(ssh_channel, &ssh_out, sizeof(ssh_out));
+                                libssh2_channel_write(ssh_channel, &ssh_out, 1);
 				break;
                             case BSP_INPUT_NAVIGATION_KEY_F1:
 				ESP_LOGI(TAG, "close key pressed - returning to app launcher");
@@ -578,28 +578,28 @@ void util_ssh(pax_buf_t* buffer, gui_theme_t* theme, ssh_settings_t* settings) {
 				console_set_cursor(&console_instance, 0, 0);
 				cx = cy = ocx = ocy = 0;
   	        		pax_draw_line(buffer, 0xff000000, ocx, ocy, ocx, ocy + (console_instance.char_height - 1));
-                                libssh2_channel_write(ssh_channel, CHR_NL, sizeof(CHR_NL));
+                                libssh2_channel_write(ssh_channel, CHR_NL, 1);
                                 display_blit_buffer(buffer);
 				break;
 			    case BSP_INPUT_NAVIGATION_KEY_LEFT:
 				ESP_LOGI(TAG, "left key pressed");
-                                libssh2_channel_write(ssh_channel, CSI_LEFT, sizeof(CSI_LEFT));
+                                libssh2_channel_write(ssh_channel, CSI_LEFT, strlen(CSI_LEFT));
 				break;
             		    case BSP_INPUT_NAVIGATION_KEY_RIGHT:
 				ESP_LOGI(TAG, "right key pressed");
-                                libssh2_channel_write(ssh_channel, CSI_RIGHT, sizeof(CSI_RIGHT));
+                                libssh2_channel_write(ssh_channel, CSI_RIGHT, strlen(CSI_RIGHT));
 				break;
             		    case BSP_INPUT_NAVIGATION_KEY_UP:
 				ESP_LOGI(TAG, "up key pressed");
-                                libssh2_channel_write(ssh_channel, CSI_UP, sizeof(CSI_UP));
+                                libssh2_channel_write(ssh_channel, CSI_UP, strlen(CSI_UP));
 				break;
             		    case BSP_INPUT_NAVIGATION_KEY_DOWN:
 				ESP_LOGI(TAG, "down key pressed");
-                                libssh2_channel_write(ssh_channel, CSI_DOWN, sizeof(CSI_DOWN));
+                                libssh2_channel_write(ssh_channel, CSI_DOWN, strlen(CSI_DOWN));
 				break;
             		    case BSP_INPUT_NAVIGATION_KEY_TAB:
 				ESP_LOGI(TAG, "tab key pressed");
-                                libssh2_channel_write(ssh_channel, CHR_TAB, sizeof(CHR_TAB));
+                                libssh2_channel_write(ssh_channel, CHR_TAB, 1);
 				break;
 			    case BSP_INPUT_NAVIGATION_KEY_VOLUME_UP:
 				ESP_LOGI(TAG, "volume up key pressed");
@@ -613,7 +613,7 @@ void util_ssh(pax_buf_t* buffer, gui_theme_t* theme, ssh_settings_t* settings) {
   	        		pax_draw_line(buffer, 0xff000000, ocx, ocy, ocx, ocy + (console_instance.char_height - 1));
 	                        console_instance.fg = 0xff00ff00;
 	                        console_instance.bg = 0x00000000;
-                                libssh2_channel_write(ssh_channel, CHR_NL, sizeof(CHR_NL));
+                                libssh2_channel_write(ssh_channel, CHR_NL, 1);
                                 display_blit_buffer(buffer);
 				break;
 			    case BSP_INPUT_NAVIGATION_KEY_VOLUME_DOWN:
@@ -628,12 +628,12 @@ void util_ssh(pax_buf_t* buffer, gui_theme_t* theme, ssh_settings_t* settings) {
   	        		pax_draw_line(buffer, 0xff000000, ocx, ocy, ocx, ocy + (console_instance.char_height - 1));
 	                        console_instance.fg = 0xff00ff00;
 	                        console_instance.bg = 0x00000000;
-                                libssh2_channel_write(ssh_channel, CHR_NL, sizeof(CHR_NL));
+                                libssh2_channel_write(ssh_channel, CHR_NL, 1);
                                 display_blit_buffer(buffer);
 				break;
             		    case BSP_INPUT_NAVIGATION_KEY_BACKSPACE:
 				ESP_LOGI(TAG, "backspace key pressed");
-                                libssh2_channel_write(ssh_channel, CHR_BS, sizeof(CHR_BS));
+                                rc = libssh2_channel_write(ssh_channel, CHR_BS, 1);
                                 break;
                             case BSP_INPUT_NAVIGATION_KEY_RETURN:
 				ESP_LOGI(TAG, "return key pressed");
@@ -642,7 +642,7 @@ void util_ssh(pax_buf_t* buffer, gui_theme_t* theme, ssh_settings_t* settings) {
     				//ESP_LOGI(TAG, "redrawing background image");
 				// XXX this is too slow to do every time return is pressed
 				//pax_draw_image(buffer, &ssh_bg_pax_buf, 0, 0);
-                                libssh2_channel_write(ssh_channel, CHR_NL, sizeof(CHR_NL));
+                                libssh2_channel_write(ssh_channel, CHR_NL, 1);
                                 break;
 			    // TODO: handle control key combinations
 			    // TODO: improve escape character processing so we can use vi, emacs etc
@@ -680,33 +680,75 @@ void util_ssh(pax_buf_t* buffer, gui_theme_t* theme, ssh_settings_t* settings) {
 
 	//ESP_LOGI(TAG, "display data sent by server");
 	if (nbytes > 0) {
-	    console_puts(&console_instance, ssh_buffer);
-	    // Draw the cursor as a thin vertical line
-	    // TODO: Other cursor styles e.g. block, blinking block, blinking line
-	    // TODO: Abstract the logic for figuring out the x, y pixel coordinates of the cursor
+
+	    // Parse ANSI escape sequences
+	    char* p = ssh_buffer;
+	    while (p < ssh_buffer + nbytes) {
+	        if (*p == '\x1b' && p + 1 < ssh_buffer + nbytes && *(p+1) == '[') {
+	            // CSI sequence: ESC[
+	            p += 2;
+	            char seq[32] = {0};
+	            int i = 0;
+	            // Parse parameters
+	            while (p < ssh_buffer + nbytes && i < 31) {
+	                if ((*p >= '0' && *p <= '9') || *p == ';' || *p == '?') {
+	                    seq[i++] = *p++;
+	                } else {
+	                    break;
+	                }
+	            }
+	            if (p < ssh_buffer + nbytes) {
+	                char cmd = *p++;
+	                if (cmd == 'J' && strcmp(seq, "2") == 0) {
+	                    // Clear screen
+	                    console_clear(&console_instance);
+	                    pax_draw_rect(buffer, 0xff000000, 0, 0, 800, 480);
+	                    if (ssh_bg_pax_buf.width > 0) {
+	                        pax_draw_image(buffer, &ssh_bg_pax_buf, 0, 0);
+	                    }
+	                    console_set_cursor(&console_instance, 0, 0);
+	                    cx = cy = ocx = ocy = 0;
+	                } else if (cmd == 'H' || cmd == 'f') {
+	                    // Cursor position
+	                    int row = 1, col = 1;
+	                    if (seq[0]) sscanf(seq, "%d;%d", &row, &col);
+	                    console_set_cursor(&console_instance, col - 1, row - 1);
+	                } else {
+	                    // Pass through other sequences
+	                    char esc_seq[64];
+	                    snprintf(esc_seq, sizeof(esc_seq), "\x1b[%s%c", seq, cmd);
+	                    console_puts(&console_instance, esc_seq);
+	                }
+	            }
+	        } else if (*p == 0x08) {
+	            // Backspace: erase previous character and move cursor left
+	            ESP_LOGI(TAG, "Detected BS (0x08), erasing character and moving cursor left from x=%d", console_instance.cursor_x);
+	            if (console_instance.cursor_x > 0) {
+	                console_instance.cursor_x--;
+	                int erase_x = console_instance.char_width * console_instance.cursor_x;
+	                int erase_y = console_instance.char_height * console_instance.cursor_y;
+	                // Erase the character at the new cursor position
+	                pax_draw_rect(buffer, console_instance.bg,
+	                             erase_x, erase_y,
+	                             console_instance.char_width, console_instance.char_height);
+	            }
+	            p++;
+	        } else {
+	            console_put(&console_instance, *p++);
+	        }
+	    }
+	    
+	    // Draw cursor
 	    cx = console_instance.char_width * console_instance.cursor_x;
 	    cy = console_instance.char_height * console_instance.cursor_y;
-	    printf("cursor position... %d, %d\n", console_instance.cursor_x, console_instance.cursor_y);
-	    if (ocx != 0 && ocy != 0) {
-		// clear old cursor by writing a new line in black
-		// TODO: Change cursor clear vertical line draw to use background colour
-	        printf("clearing cursor visual at old cursor position... %d, %d\n", ocx, ocy);
-  	        pax_draw_line(buffer, 0xff000000, ocx, ocy, ocx, ocy + (console_instance.char_height - 1));
+	    if (ocx != 0 || ocy != 0) {
+	        pax_draw_line(buffer, 0xff000000, ocx, ocy, ocx, ocy + (console_instance.char_height - 1));
 	    }
-	    // save the current cursor position as ocx, ocy so we can refer to it later
 	    ocx = cx;
 	    ocy = cy;
-	    // draw cursor as a light grey vertical line
-	    // TODO: Change cursor vertical line draw to use foreground/text colour
-	    printf("drawing cursor visual at cursor position %d, %d\n", cx, cy);
-  	    pax_draw_line(buffer, 0xefefefef, cx, cy, cx, cy + (console_instance.char_height - 1));
-	    console_instance.fg = 0xff00ff00;
-	    console_instance.bg = 0x00000000;
-	    // dump the contents of the ssh_buffer so we can see what escape codes etc are being sent
-	    //for (int pos = 0; pos < nbytes; pos++) {
-	    //    printf("%0x ", ssh_buffer[pos]);
-            //}
-	    display_blit_buffer(buffer);
+	    pax_draw_line(buffer, 0xffefefef, cx, cy, cx, cy + (console_instance.char_height - 1));
+	    
+            display_blit_buffer(buffer);
 	}
     }
  
