@@ -94,7 +94,7 @@ This app is all about interactive remote login, but you can do other stuff with 
 
 ## Building
 
-You should be able to build it in the same way as the regular launcher, and it should pull in the `skuodi/libssh2_esp` component at build time. I've had good results using ESP-IDF 5.5 and Python 3.12.7 in case this is relevant.
+You should be able to build it in the same way as the regular launcher, and it should pull in the `skuodi/libssh2_esp` component at build time. I've had good results using ESP-IDF 5.5.1 and Python 3.13.11 (the version which comes with ESP-IDF) in case this is relevant.
 
 ## Code contributions
 
